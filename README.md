@@ -16,7 +16,8 @@ Cilj je izraditi metodologiju i demonstraciju prikladnu za obranu projekta na ko
 ## Planirani tehnički pristup
 - izdvajanje frameova iz ulaznih videa
 - anotacija znakova pomoću bounding box oznaka
-- treniranje detekcijskog modela (YOLOv8)
+- treniranje detekcijskog modela (Ultralytics YOLO26, uz YOLO11 kao stabilan fallback)
+- usporedni baseline eksperiment (RT-DETR) za metodološku validaciju
 - evaluacija po metrikama (npr. mAP, precision, recall)
 - kvalitativna analiza rezultata na stvarnim scenama vožnje
 

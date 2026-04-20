@@ -10,7 +10,7 @@ The final system should detect and classify traffic signs reliably enough for a 
 ## 2. Starting Point from Lab 02
 Current research direction already identified:
 - Deep-learning-based detection as the main approach
-- YOLO family (especially YOLOv8) as a practical real-time baseline
+- YOLO family (especially YOLO26/YOLO11) as a practical real-time baseline
 - Traditional color/shape cues as optional support techniques
 - Relevant external dataset with classes such as speed limits, stop sign, and traffic lights
 
@@ -18,13 +18,16 @@ This is a good foundation. The next step is to move from general research to an 
 
 ## 3. Proposed Technical Direction
 Primary approach:
-- Use a one-stage detector (YOLOv8) as the core model
+- Use a one-stage detector (YOLO26) as the core model
+- Keep YOLO11 as a stable fallback baseline
+- Optionally evaluate RT-DETR as a transformer-based comparison model
 - Fine-tune on data extracted from professor-provided videos
 - Optionally pretrain/fine-tune with external traffic-sign data to improve class coverage
 
 Why this approach:
 - Good speed/accuracy tradeoff for video
 - Mature training/inference tooling
+- Strong 2026 ecosystem support and active maintenance
 - Easier to explain and demonstrate in a project defense
 
 ## 4. Data Strategy
@@ -90,14 +93,18 @@ Input size:
 
 ## 6. Model Training Plan
 ### 6.1 Baseline
-- Model: `yolov8n` (fast baseline)
+- Model: `yolo26n` (fast baseline)
 - Goal: establish first measurable results quickly
 
 ### 6.2 Improved Model
-- Model: `yolov8s` (or stronger if compute allows)
+- Model: `yolo26s` (or `yolo11s` if you need more conservative/stable behavior)
 - Add tuned augmentations and potentially higher resolution
 
-### 6.3 Training Metrics to Track
+### 6.3 Comparative Baseline (Optional but Recommended)
+- Model: `rtdetr-l` (or another RT-DETR variant available in your environment)
+- Goal: strengthen methodology by comparing one YOLO-family detector with one transformer detector
+
+### 6.4 Training Metrics to Track
 - mAP@0.50
 - mAP@0.50:0.95
 - Precision
@@ -106,7 +113,7 @@ Input size:
 
 Example training command:
 ```bash
-yolo detect train model=yolov8n.pt data=data.yaml imgsz=640 epochs=100 batch=16
+yolo detect train model=yolo26n.pt data=data.yaml imgsz=640 epochs=100 batch=16
 ```
 
 ## 7. Evaluation Methodology
@@ -159,7 +166,7 @@ Main risks and actions:
 
 ## 11. Practical Tool Stack
 - Annotation: `CVAT` or `Label Studio`
-- Training/Inference: `Ultralytics YOLOv8`
+- Training/Inference: `Ultralytics YOLO26/YOLO11` (with optional `RT-DETR` comparison)
 - Data handling: Python + OpenCV + ffmpeg
 - Experiment tracking (lightweight): CSV/Markdown logs per run
 
@@ -167,7 +174,7 @@ Main risks and actions:
 1. Extract frames from both videos with fixed FPS.
 2. Freeze final class list based on visible signs in your videos.
 3. Annotate first balanced subset (day + dusk).
-4. Train baseline `yolov8n` and record metrics.
+4. Train baseline `yolo26n` and record metrics.
 5. Run error analysis and select one focused improvement for next iteration.
 
 ## Open Questions (for alignment before implementation)
