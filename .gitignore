@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Logs and OS noise
+*.log
+.DS_Store
+
+# ML outputs
+models/checkpoints/**
+models/exported/**
+demo/output/**
+logs/**
+
+# Large raw/generated data
+data/raw/**/*.mp4
+data/raw/**/*.avi
+data/raw/**/*.mov
+data/frames/**
+data/annotations/yolo/images/**
+data/annotations/yolo/labels/**
+data/annotations/cvat_exports/seed_batch/**
+data/external/car/**
+data/external/car_no_lights/**
+data/external/video.mp4
+
+# Keep folder structure placeholders
+!data/**/.gitkeep
+!models/**/.gitkeep
+!demo/**/.gitkeep
+!logs/**/.gitkeep
