@@ -8,26 +8,22 @@ __pycache__/
 *.log
 .DS_Store
 
-# ML outputs
-models/checkpoints/**
-models/exported/**
-demo/output/**
-logs/**
+# ML outputs (training artifacts) — keep only models/trained/weights/best.pt
+runs/**
+models/trained/*
+!models/trained/weights/
+models/trained/weights/*
+!models/trained/weights/best.pt
 
-# Large raw/generated data
+# Large raw / generated data
 data/raw/**/*.mp4
 data/raw/**/*.avi
 data/raw/**/*.mov
-data/frames/**
-data/annotations/yolo/images/**
-data/annotations/yolo/labels/**
-data/annotations/cvat_exports/seed_batch/**
-data/external/car/**
-data/external/car_no_lights/**
-data/external/video.mp4
+data/external/**
+
+# Pretrained weights auto-downloaded by ultralytics in repo root
+/yolo*.pt
 
 # Keep folder structure placeholders
 !data/**/.gitkeep
 !models/**/.gitkeep
-!demo/**/.gitkeep
-!logs/**/.gitkeep

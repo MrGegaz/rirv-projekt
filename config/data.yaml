@@ -1,0 +1,19 @@
+path: /home/mrgegaz/Workspace/VUB/6_Semestar/Projekti/RiRV/data/external/car_no_lights
+train: train/images
+val: val/images
+test: test/images
+
+names:
+  0: speed_limit_10
+  1: speed_limit_20
+  2: speed_limit_30
+  3: speed_limit_40
+  4: speed_limit_50
+  5: speed_limit_60
+  6: speed_limit_70
+  7: speed_limit_80
+  8: speed_limit_90
+  9: speed_limit_100
+  10: speed_limit_110
+  11: speed_limit_120
+  12: stop

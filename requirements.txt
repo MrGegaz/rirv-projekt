@@ -1,5 +1,7 @@
 ultralytics>=8.4.40
 opencv-python>=4.10
 pyyaml>=6.0
-tqdm>=4.66
 numpy>=1.26
+
+# Note: torch je instaliran posebno radi CUDA wheela (cu130 za RTX 3050).
+# Vidi https://pytorch.org/get-started/locally/ ako trebaš reinstall.
