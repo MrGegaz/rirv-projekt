@@ -29,9 +29,11 @@ profesorovi videi se koriste samo kao **demonstracijski / evaluacijski materijal
    python scripts/live_demo.py --video data/raw/day_video/DayDrive1.mp4
    ```
    Otvara OpenCV prozor s detekcijama, ByteTrack temporal smoothingom, FPS
-   counterom i procjenom udaljenosti svakog znaka u metrima. Quit: `q`.
-   Korisni flagovi: `--no-distance` (skida distance overlay), `--no-tracking`
-   (raw per-frame predikcije), `--focal-length N` (kalibracija za drugu kameru).
+   counterom, procjenom udaljenosti svakog znaka u metrima i procjenom
+   brzine približavanja u km/h. Quit: `q`. Korisni flagovi:
+   `--no-distance` (skida distance overlay), `--no-speed` (skida km/h),
+   `--no-tracking` (raw per-frame predikcije, bez km/h jer nema track ID-a),
+   `--focal-length N` (kalibracija za drugu kameru).
 
 ## Struktura
 

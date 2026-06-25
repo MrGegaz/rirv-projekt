@@ -12,6 +12,7 @@ from collections import Counter, deque
 from pathlib import Path
 
 import cv2
+import numpy as np
 from ultralytics import YOLO
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -26,7 +27,12 @@ FPS_COLOR = (0, 255, 255)
 # Pinhole-model defaults for distance estimation. Adjust via CLI for other
 # cameras: focal_px ≈ (img_width / 2) / tan(FOV / 2), e.g. 1280-wide @ 60° → 1109.
 DEFAULT_SIGN_HEIGHT_M = 0.60
-DEFAULT_FOCAL_LENGTH_PX = 1100
+DEFAULT_FOCAL_LENGTH_PX = 600
+
+# Approach-speed estimation: rolling window of (t, dist) samples per track,
+# slope of linear regression → m/s → km/h. Wider window = smoother but laggier.
+DEFAULT_SPEED_WINDOW = 12
+DEFAULT_MIN_SPEED_SAMPLES = 5
 
 
 class TrackHistory:
@@ -38,10 +44,15 @@ class TrackHistory:
     distance) and transient side false-positives.
     """
 
-    def __init__(self, window: int, min_hits: int) -> None:
+    def __init__(self, window: int, min_hits: int,
+                 speed_window: int = DEFAULT_SPEED_WINDOW,
+                 min_speed_samples: int = DEFAULT_MIN_SPEED_SAMPLES) -> None:
         self.window = window
         self.min_hits = min_hits
+        self.speed_window = speed_window
+        self.min_speed_samples = min_speed_samples
         self.tracks: dict[int, deque] = {}
+        self.dist_samples: dict[int, deque] = {}
 
     def update(self, track_id: int, cls: int):
         buf = self.tracks.get(track_id)
@@ -52,6 +63,25 @@ class TrackHistory:
         top_cls, top_count = Counter(buf).most_common(1)[0]
         return top_cls if top_count >= self.min_hits else None
 
+    def update_distance(self, track_id: int, t: float, dist_m: float) -> None:
+        buf = self.dist_samples.get(track_id)
+        if buf is None:
+            buf = deque(maxlen=self.speed_window)
+            self.dist_samples[track_id] = buf
+        buf.append((t, dist_m))
+
+    def speed_kmh(self, track_id: int):
+        buf = self.dist_samples.get(track_id)
+        if buf is None or len(buf) < self.min_speed_samples:
+            return None
+        ts = np.fromiter((t for t, _ in buf), dtype=float, count=len(buf))
+        ds = np.fromiter((d for _, d in buf), dtype=float, count=len(buf))
+        slope_mps = np.polyfit(ts, ds, 1)[0]   # negative slope = approaching
+        approach_mps = -slope_mps
+        if approach_mps <= 0:
+            return None
+        return approach_mps * 3.6
+
 
 def estimate_distance_m(bbox_height_px: int, focal_px: float, real_height_m: float) -> float:
     if bbox_height_px <= 0:
@@ -61,10 +91,18 @@ def estimate_distance_m(bbox_height_px: int, focal_px: float, real_height_m: flo
 
 def draw_box(frame, x1: int, y1: int, x2: int, y2: int, label: str) -> None:
     cv2.rectangle(frame, (x1, y1), (x2, y2), BOX_COLOR, 2)
-    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-    cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw + 4, y1), TEXT_BG, -1)
-    cv2.putText(frame, label, (x1 + 2, y1 - 4),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, TEXT_COLOR, 1, cv2.LINE_AA)
+
+    lines = label.split("\n")
+    font, scale, thickness = cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
+    sizes = [cv2.getTextSize(line, font, scale, thickness)[0] for line in lines]
+    max_w = max(w for w, _ in sizes)
+    line_h = max(h for _, h in sizes) + 4
+    total_h = line_h * len(lines)
+
+    cv2.rectangle(frame, (x1, y1 - total_h), (x1 + max_w + 4, y1), TEXT_BG, -1)
+    for i, line in enumerate(lines):
+        y = y1 - total_h + line_h * (i + 1) - 4
+        cv2.putText(frame, line, (x1 + 2, y), font, scale, TEXT_COLOR, thickness, cv2.LINE_AA)
 
 
 def main() -> None:
@@ -89,6 +127,10 @@ def main() -> None:
                         help="Camera focal length in pixels (rough default for 1280-wide dashcam).")
     parser.add_argument("--no-distance", action="store_true",
                         help="Hide the distance estimate appended to each label.")
+    parser.add_argument("--speed-window", type=int, default=DEFAULT_SPEED_WINDOW,
+                        help="Rolling window of recent (time, distance) samples per track for speed.")
+    parser.add_argument("--no-speed", action="store_true",
+                        help="Hide the approach-speed (km/h) estimate.")
     args = parser.parse_args()
 
     if not args.weights.exists():
@@ -115,7 +157,8 @@ def main() -> None:
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     use_tracker = not args.no_tracking
-    history = TrackHistory(args.track_window, args.track_min_hits)
+    history = TrackHistory(args.track_window, args.track_min_hits,
+                           speed_window=args.speed_window)
     frame_period = 1.0 / args.target_fps if args.target_fps > 0 else 0.0
     times = deque(maxlen=30)
     start = time.perf_counter()
@@ -158,17 +201,29 @@ def main() -> None:
             if use_tracker:
                 if box.id is None:
                     continue
-                confirmed = history.update(int(box.id[0]), raw_cls)
+                track_id = int(box.id[0])
+                confirmed = history.update(track_id, raw_cls)
                 if confirmed is None:
                     continue
                 cls = confirmed
             else:
+                track_id = None
                 cls = raw_cls
-            label = f"{names[cls]} {conf:.2f}"
+
+            extras = []
             if not args.no_distance:
                 dist_m = estimate_distance_m(y2 - y1, args.focal_length, args.sign_height)
                 if dist_m > 0:
-                    label += f" | {round(dist_m)}m"
+                    extras.append(f"dist: {round(dist_m)}m")
+                    if track_id is not None and not args.no_speed:
+                        history.update_distance(track_id, loop_start, dist_m)
+                        spd = history.speed_kmh(track_id)
+                        if spd is not None:
+                            extras.append(f"spd: {round(spd)} km/h")
+
+            label = f"{names[cls]} {conf:.2f}"
+            if extras:
+                label += "\n" + " ".join(extras)
             draw_box(frame, x1, y1, x2, y2, label)
 
         now = time.perf_counter()

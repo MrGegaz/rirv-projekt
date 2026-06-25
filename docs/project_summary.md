@@ -34,23 +34,39 @@ Detekcija i klasifikacija prometnih znakova iz video snimaka vožnje, demonstrir
 2. Po želji pokrenuti na `NightDrive1.mp4` (sumrak) — kvalitativna usporedba.
 3. FPS counter u kutu prikazuje stabilnost inference brzine.
 
-## Distance estimation
+## Distance & speed estimation
 
-Uz svaku detekciju live demo prikazuje gruba procjena udaljenosti do znaka u
-metrima, računata pinhole-kameri formulom:
+Uz svaku detekciju live demo prikazuje grubu procjenu udaljenosti do znaka u
+metrima i brzine približavanja u km/h.
+
+**Distance** se računa pinhole-kamera formulom:
 
 ```
 distance_m = (sign_height_m × focal_length_px) / bbox_height_px
 ```
 
 Defaultne vrijednosti: `sign_height_m = 0.60` (standardna visina HR cestovnih
-znakova) i `focal_length_px = 1100` (otprilike za 1280-wide dashcam s ~60° FOV).
-Obje su konfigurirane preko `--sign-height` i `--focal-length` flagova ako
-koristiš drugu kameru ili znakove autocestaške veličine (~0.90 m).
+znakova) i `focal_length_px = 600` (kalibrirano na demo videima). Obje su
+konfigurirane preko `--sign-height` i `--focal-length` flagova ako koristiš
+drugu kameru ili znakove autocestaške veličine (~0.90 m).
 
-Procjena je gruba (~±30%) jer nemamo kalibraciju kamere — bitan je **trend**
-(broj se monotono smanjuje kako se vozilo približava znaku), ne apsolutna
-preciznost. Overlay se može sakriti s `--no-distance`.
+**Approach speed** se računa kao slope linearne regresije nad zadnjih ~12
+uzoraka `(timestamp, distance)` po track ID-u (`np.polyfit` daje `m/s`,
+množimo sa 3.6 za km/h). Linearna regresija nad prozorom je puno robusnija
+od `Δd / Δt` jer usrednjuje šum iz procjene udaljenosti. Negativan slope =
+sign se približava → prikaže se km/h; pozitivan slope (sign već iza vozila)
+→ broj se ne prikazuje. Veličina prozora je tunable s `--speed-window`.
+
+Label se renderira u dva reda:
+```
+speed_limit_50 0.92
+dist: 32m spd: 47 km/h
+```
+
+Sve je gruba procjena (~±30% na distance, ~±5 km/h na speed) jer nemamo
+kalibraciju kamere — bitan je **trend** (broj se monotono smanjuje kako se
+vozilo približava znaku; km/h prati subjektivnu brzinu vožnje), ne apsolutna
+preciznost. Pojedinačni overlayi se sakrivaju s `--no-distance` ili `--no-speed`.
 
 ## Tipične granice
 - Sumrak ima slabiji kontrast → mogući propušteni mali znakovi (mitigacija: viši `--imgsz`).
