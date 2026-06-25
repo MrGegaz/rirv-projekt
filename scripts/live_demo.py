@@ -2,8 +2,8 @@
 """Live OpenCV demo for traffic-sign detection.
 
 Reads a video, runs YOLO inference (FP16 on CUDA) with ByteTrack temporal
-smoothing, draws stabilized class boxes and a rolling FPS counter in an
-OpenCV window. Quit with 'q'.
+smoothing, draws stabilized class boxes, a per-sign distance estimate, and a
+rolling FPS counter in an OpenCV window. Quit with 'q'.
 """
 
 import argparse
@@ -22,6 +22,11 @@ BOX_COLOR = (0, 220, 0)
 TEXT_COLOR = (255, 255, 255)
 TEXT_BG = (0, 120, 0)
 FPS_COLOR = (0, 255, 255)
+
+# Pinhole-model defaults for distance estimation. Adjust via CLI for other
+# cameras: focal_px ≈ (img_width / 2) / tan(FOV / 2), e.g. 1280-wide @ 60° → 1109.
+DEFAULT_SIGN_HEIGHT_M = 0.60
+DEFAULT_FOCAL_LENGTH_PX = 1100
 
 
 class TrackHistory:
@@ -48,6 +53,12 @@ class TrackHistory:
         return top_cls if top_count >= self.min_hits else None
 
 
+def estimate_distance_m(bbox_height_px: int, focal_px: float, real_height_m: float) -> float:
+    if bbox_height_px <= 0:
+        return 0.0
+    return (real_height_m * focal_px) / bbox_height_px
+
+
 def draw_box(frame, x1: int, y1: int, x2: int, y2: int, label: str) -> None:
     cv2.rectangle(frame, (x1, y1), (x2, y2), BOX_COLOR, 2)
     (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
@@ -72,6 +83,12 @@ def main() -> None:
                         help="Min same-class hits within window to confirm a detection.")
     parser.add_argument("--no-tracking", action="store_true",
                         help="Disable ByteTrack smoothing (raw per-frame predictions).")
+    parser.add_argument("--sign-height", type=float, default=DEFAULT_SIGN_HEIGHT_M,
+                        help="Assumed physical sign height in meters for distance estimate.")
+    parser.add_argument("--focal-length", type=float, default=DEFAULT_FOCAL_LENGTH_PX,
+                        help="Camera focal length in pixels (rough default for 1280-wide dashcam).")
+    parser.add_argument("--no-distance", action="store_true",
+                        help="Hide the distance estimate appended to each label.")
     args = parser.parse_args()
 
     if not args.weights.exists():
@@ -147,7 +164,12 @@ def main() -> None:
                 cls = confirmed
             else:
                 cls = raw_cls
-            draw_box(frame, x1, y1, x2, y2, f"{names[cls]} {conf:.2f}")
+            label = f"{names[cls]} {conf:.2f}"
+            if not args.no_distance:
+                dist_m = estimate_distance_m(y2 - y1, args.focal_length, args.sign_height)
+                if dist_m > 0:
+                    label += f" | {round(dist_m)}m"
+            draw_box(frame, x1, y1, x2, y2, label)
 
         now = time.perf_counter()
         times.append(now - last)

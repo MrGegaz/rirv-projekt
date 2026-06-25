@@ -19,7 +19,7 @@ Detekcija i klasifikacija prometnih znakova iz video snimaka vožnje, demonstrir
 |---|---|---|
 | (1×) Priprema dataseta | [scripts/prepare_dataset.py](../scripts/prepare_dataset.py) | Filtrira semafore i remapira klase iz sirovog Kaggle exporta |
 | Trening | [scripts/train.py](../scripts/train.py) | YOLO11s, 80 epoha, batch 16, imgsz 640, AMP, cos_lr |
-| Live demo | [scripts/live_demo.py](../scripts/live_demo.py) | OpenCV prozor, FP16 inference, rolling FPS overlay |
+| Live demo | [scripts/live_demo.py](../scripts/live_demo.py) | OpenCV prozor, FP16 inference, ByteTrack temporal smoothing, distance overlay, rolling FPS overlay |
 
 ## Hiperparametri (sažetak)
 - model: `yolo11s.pt`
@@ -33,6 +33,24 @@ Detekcija i klasifikacija prometnih znakova iz video snimaka vožnje, demonstrir
 1. Pokrenuti `live_demo.py` na `DayDrive1.mp4` (dnevna scena).
 2. Po želji pokrenuti na `NightDrive1.mp4` (sumrak) — kvalitativna usporedba.
 3. FPS counter u kutu prikazuje stabilnost inference brzine.
+
+## Distance estimation
+
+Uz svaku detekciju live demo prikazuje gruba procjena udaljenosti do znaka u
+metrima, računata pinhole-kameri formulom:
+
+```
+distance_m = (sign_height_m × focal_length_px) / bbox_height_px
+```
+
+Defaultne vrijednosti: `sign_height_m = 0.60` (standardna visina HR cestovnih
+znakova) i `focal_length_px = 1100` (otprilike za 1280-wide dashcam s ~60° FOV).
+Obje su konfigurirane preko `--sign-height` i `--focal-length` flagova ako
+koristiš drugu kameru ili znakove autocestaške veličine (~0.90 m).
+
+Procjena je gruba (~±30%) jer nemamo kalibraciju kamere — bitan je **trend**
+(broj se monotono smanjuje kako se vozilo približava znaku), ne apsolutna
+preciznost. Overlay se može sakriti s `--no-distance`.
 
 ## Tipične granice
 - Sumrak ima slabiji kontrast → mogući propušteni mali znakovi (mitigacija: viši `--imgsz`).
