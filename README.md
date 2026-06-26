@@ -33,16 +33,32 @@ klasa) i sintetičnih primjera generiranih iz **European Traffic Sign Dataset**
    python scripts/live_demo.py --video data/raw/day_video/DayDrive1.mp4
    ```
    Otvara OpenCV prozor s detekcijama, ByteTrack temporal smoothingom, FPS
-   counterom, procjenom udaljenosti svakog znaka u metrima i procjenom
-   brzine približavanja u km/h. Quit: `q`. Korisni flagovi:
-   `--no-distance` (skida distance overlay), `--no-speed` (skida km/h),
-   `--no-tracking` (raw per-frame predikcije, bez km/h jer nema track ID-a),
-   `--focal-length N` (kalibracija za drugu kameru).
+   counterom, real-time playback ratio indikatorom, procjenom udaljenosti
+   svakog znaka u metrima, procjenom brzine približavanja u km/h, ROI maskom
+   (donja 30% slike se ignorira), label persistencom (~330ms nakon detection
+   loss-a) i sidebarom u gornjem desnom kutu s zadnjih 5 detekcija.
+
+   **Keyboard shortcuts u runtime-u:**
+   - `space` — pauza / resume
+   - `+` / `=` — ubrzaj 1.25× (max 4×)
+   - `-` / `_` — uspori 1.25× (min 0.25×)
+   - `r` — reset playback speed na 1.0×
+   - `q` — quit
+
+   **Korisni CLI flagovi:**
+   - `--imgsz 1280` — veći input → bolje detekcije sitnih znakova (FPS cost)
+   - `--conf 0.30` — niži global confidence threshold
+   - `--speed-scale 1.25` — calibrate prikazan km/h (default 1.1)
+   - `--roi-bottom-margin 0.30` — fraction donje slike koja se ignorira
+   - `--min-bbox-px 18` — reject sitne detekcije (noise zone)
+   - `--max-aspect-ratio 1.8` — reject wide-rectangle FP-ove (reklame)
+   - `--target-fps -1` — auto-match source FPS (default); 0 = uncapped
+   - `--no-distance`, `--no-speed`, `--no-sidebar`, `--no-tracking`
 
 ## Struktura
 
 ```
-config/data.yaml                 # YOLO dataset config (13 klasa)
+config/data.yaml                 # YOLO dataset config (20 klasa)
 data/external/car_no_lights/     # training data (Kaggle, semafori uklonjeni)
 data/raw/{day_video,dusk_video}/ # demo videi
 models/trained/weights/best.pt   # istrenirani model

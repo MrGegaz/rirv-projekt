@@ -83,12 +83,44 @@ def random_background(rng: random.Random, size: int, real_pool: list[Path]) -> n
 
 def augment_sign(rng: random.Random, img: np.ndarray) -> np.ndarray:
     h, w = img.shape[:2]
-    angle = rng.uniform(-12, 12)
+
+    angle = rng.uniform(-15, 15)
     M = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
     img = cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REPLICATE)
-    alpha = rng.uniform(0.7, 1.3)
-    beta = rng.randint(-30, 30)
-    img = np.clip(img.astype(np.int16) * alpha + beta, 0, 255).astype(np.uint8)
+
+    if rng.random() < 0.7:
+        max_shift = max(1, int(min(w, h) * 0.15))
+        src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+        dst = np.float32([
+            [rng.randint(0, max_shift), rng.randint(0, max_shift)],
+            [w - rng.randint(0, max_shift), rng.randint(0, max_shift)],
+            [w - rng.randint(0, max_shift), h - rng.randint(0, max_shift)],
+            [rng.randint(0, max_shift), h - rng.randint(0, max_shift)],
+        ])
+        M_persp = cv2.getPerspectiveTransform(src, dst)
+        img = cv2.warpPerspective(img, M_persp, (w, h), borderMode=cv2.BORDER_REPLICATE)
+
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV).astype(np.int16)
+    hsv[..., 0] = (hsv[..., 0] + rng.randint(-8, 8)) % 180
+    hsv[..., 1] = np.clip(hsv[..., 1] * rng.uniform(0.7, 1.3), 0, 255)
+    hsv[..., 2] = np.clip(hsv[..., 2] * rng.uniform(0.7, 1.3) + rng.randint(-25, 25), 0, 255)
+    img = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+    if rng.random() < 0.4:
+        ksize = rng.choice([5, 7, 9, 11])
+        kernel = np.zeros((ksize, ksize), dtype=np.float32)
+        rad = np.deg2rad(rng.uniform(0, 180))
+        dx, dy = np.cos(rad), np.sin(rad)
+        center = ksize // 2
+        for i in range(ksize):
+            offset = i - center
+            x = int(round(center + offset * dx))
+            y = int(round(center + offset * dy))
+            if 0 <= x < ksize and 0 <= y < ksize:
+                kernel[y, x] = 1.0
+        kernel /= max(1.0, kernel.sum())
+        img = cv2.filter2D(img, -1, kernel)
+
     return img
 
 
@@ -116,7 +148,7 @@ def generate_sample(rng: random.Random, sign_path: Path,
     sign = cv2.imread(str(sign_path))
     if sign is None:
         return None, None
-    target_w = rng.randint(35, 130)
+    target_w = rng.randint(20, 180)
     h, w = sign.shape[:2]
     scale = target_w / w
     target_h = max(1, int(h * scale))
@@ -125,12 +157,18 @@ def generate_sample(rng: random.Random, sign_path: Path,
 
     bg = random_background(rng, canvas_size, backgrounds)
     max_x = canvas_size - target_w
-    max_y = (canvas_size // 2) - target_h   # bias to upper half
+    max_y = int(canvas_size * 0.65) - target_h   # bias to upper 2/3
     if max_x < 1 or max_y < 1:
         return None, None
     x = rng.randint(0, max_x)
     y = rng.randint(0, max_y)
     img = alpha_paste(bg, sign, x, y)
+
+    if rng.random() < 0.4:
+        quality = rng.randint(50, 90)
+        ok, encoded = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+        if ok:
+            img = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
 
     xc = (x + target_w / 2) / canvas_size
     yc = (y + target_h / 2) / canvas_size
@@ -147,8 +185,10 @@ def main() -> None:
                    default=REPO_ROOT / "data" / "external" / "etsd_synthetic")
     p.add_argument("--background-pool", type=Path,
                    default=REPO_ROOT / "data" / "external" / "car_no_lights" / "train" / "images")
-    p.add_argument("--samples-per-class", type=int, default=250)
-    p.add_argument("--val-samples-per-class", type=int, default=40)
+    p.add_argument("--samples-per-class", type=int, default=500)
+    p.add_argument("--val-samples-per-class", type=int, default=80)
+    p.add_argument("--background-only-frac", type=float, default=0.15,
+                   help="Fraction of total samples to add as pure-background hard negatives.")
     p.add_argument("--canvas-size", type=int, default=640)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--montage", action="store_true", help="Save a 12-image sanity montage")
@@ -203,6 +243,20 @@ def main() -> None:
                     montage_samples.append(annotated)
 
             print(f"  ETSD {etsd_cls:03d} -> {new_cls} ({name}, {split}): {generated} samples")
+
+    # Hard-negative background samples: pure backgrounds with empty labels.
+    # Teaches the detector that random street scenery (billboards, storefronts)
+    # is not a sign even if it has sign-like colors.
+    total_signs = args.samples_per_class * len(ETSD_TO_NEW_CLS)
+    for split, frac in (("train", args.background_only_frac), ("val", args.background_only_frac * 0.5)):
+        n = int(total_signs * frac)
+        for i in range(n):
+            bg = random_background(rng, args.canvas_size, backgrounds)
+            stem = f"bg_only_{split}_{i:05d}"
+            cv2.imwrite(str(args.output / split / "images" / f"{stem}.jpg"),
+                        bg, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            (args.output / split / "labels" / f"{stem}.txt").write_text("")
+        print(f"  Hard negatives ({split}): {n} background-only samples")
 
     if args.montage and montage_samples:
         cs = args.canvas_size

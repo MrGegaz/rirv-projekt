@@ -11,7 +11,7 @@ Detekcija i klasifikacija prometnih znakova iz video snimaka vožnje, demonstrir
 - **Hardware target:** NVIDIA RTX 3050 Laptop 6 GB (FP16 inference)
 - **Trening dataset:** kombinacija dva izvora
   - **Realna detekcija:** [Kaggle car detection](https://www.kaggle.com/datasets/pkdarabi/cardetection/data), pripremljen u `data/external/car_no_lights/` (3530 train / 801 val / 638 test, semafori uklonjeni, remapan u 13 klasa)
-  - **Synthetic augmentacija:** [European Traffic Sign Dataset](https://www.researchgate.net/publication/329307891_Classification_of_Traffic_Signs_The_European_Dataset) (Serna & Ruichek, 2018) — 7 dodatnih gradskih klasa generiranih preko paste-on-background sintetike (`scripts/augment_etsd.py`, 250 train + 40 val po klasi)
+  - **Synthetic augmentacija:** [European Traffic Sign Dataset](https://www.researchgate.net/publication/329307891_Classification_of_Traffic_Signs_The_European_Dataset) (Serna & Ruichek, 2018) — 7 dodatnih gradskih klasa generiranih preko paste-on-background sintetike (`scripts/augment_etsd.py`, 500 train + 80 val po klasi + 15% hard-negative backgrounds). Augmentacije: random scale 20-180 px, rotation ±15°, perspective warp (±15% corner shift), HSV color jitter, motion blur (5-11 px directional kernel), JPEG compression artifacts.
 - **Evaluacija:** profesorovi videi (`data/raw/day_video/`, `data/raw/dusk_video/`) — koriste se samo za live demo, **nikad nisu trening podaci**
 - **Taksonomija:** 20 klasa
   - 13 originalnih (speed_limits 10-120, stop)
@@ -24,7 +24,7 @@ Detekcija i klasifikacija prometnih znakova iz video snimaka vožnje, demonstrir
 | (1×) Priprema Kaggle dataseta | [scripts/prepare_dataset.py](../scripts/prepare_dataset.py) | Filtrira semafore i remapira klase iz sirovog Kaggle exporta |
 | (1×) Synthetic detection iz ETSD | [scripts/augment_etsd.py](../scripts/augment_etsd.py) | Paste-on-background generator za 7 dodatnih gradskih klasa iz ETSD klasifikacijskih cropova |
 | Trening | [scripts/train.py](../scripts/train.py) | YOLO11s, 80 epoha, batch 16, imgsz 640, AMP, cos_lr |
-| Live demo | [scripts/live_demo.py](../scripts/live_demo.py) | OpenCV prozor, FP16 inference, ByteTrack temporal smoothing, distance overlay, rolling FPS overlay |
+| Live demo | [scripts/live_demo.py](../scripts/live_demo.py) | OpenCV prozor, FP16 inference, ByteTrack temporal smoothing, distance + approach speed overlay, ROI mask, label persistence, sidebar, frame-skip real-time sync, playback speed shortcuts |
 
 ## Hiperparametri (sažetak)
 - model: `yolo11s.pt`
@@ -71,11 +71,42 @@ dist: 32m spd: 47 km/h
 Sve je gruba procjena (~±30% na distance, ~±5 km/h na speed) jer nemamo
 kalibraciju kamere — bitan je **trend** (broj se monotono smanjuje kako se
 vozilo približava znaku; km/h prati subjektivnu brzinu vožnje), ne apsolutna
-preciznost. Pojedinačni overlayi se sakrivaju s `--no-distance` ili `--no-speed`.
+preciznost. `--speed-scale 1.1` default kompenzira blagi underestimation zbog
+miks veličina znakova vs naša jedna pretpostavka 0.60 m. Pojedinačni overlayi
+se sakrivaju s `--no-distance` ili `--no-speed`.
+
+## Inference stabilizacija (live demo)
+
+Bez retraina, niz inference-side mehanizama poboljšava čitljivost i smanjuje
+false positives:
+
+- **ByteTrack temporal smoothing** (`--track-window 7 --track-min-hits 4`) — class
+  label se prikazuje tek kad se ista klasa pojavi 4 puta u 7-frame prozoru po track ID-u.
+  Eliminira single-frame flicker FP-ove (reklame koje samo briefly liče).
+- **Label persistence** — confirmed label/bbox ostaje vidljiv 20 framova (~330ms @ 60 FPS)
+  nakon detection loss-a, s fadeom 1.0 → 0.3. Čitljivost čak i kad detekcija na kratko padne.
+- **Bbox EMA smoothing** (α=0.7) — box ne skače piksel-po-piksel jer YOLO predikcije variraju.
+- **ROI mask** (`--roi-bottom-margin 0.30`) — donja 30% slike (cesta, haube) se ignorira.
+- **Geometric filters** — `--min-bbox-px 18` reže šum, `--max-aspect-ratio 1.8` reže
+  wide-rectangle reklame.
+- **Per-class confidence overrides** — `pass_right` 0.60 (suppress out-of-taxonomy
+  `pass_straight` misclassifications), `priority_road` 0.30 (catch more u known weak klasi).
+- **Real-time sync s frame skip** — ako render ne stiže držati source FPS (npr. fullscreen),
+  source frames se drop-aju umjesto da playback uspori. Video ostaje real-time 1.0x.
+  On-screen `playback: X.XXx` indikator potvrđuje točan timing.
+- **Recent detections sidebar** — top-right panel s zadnjih 5 unique detekcija
+  (klasa + distance + km/h). Backup čitljivost kad label-i prolaze prebrzo.
 
 ## Tipične granice
-- Sumrak ima slabiji kontrast → mogući propušteni mali znakovi (mitigacija: viši `--imgsz`).
-- Class imbalance u datasetu → neki speed_limit razredi imaju manje primjera (potencijalna analiza za izvještaj).
+- **Synthetic-to-real domain gap**: ETSD source crops su konzistentni frontal views;
+  realni gradski znakovi mogu imati shadows, weather wear, mounting strukture, color
+  shifts ovisne o kameri koje paste-on-background ne reproducira savršeno. Vidljivo
+  npr. na nekim priority_road instancama gdje model "ne vidi" znak iako je čovjeku
+  jasan — to je well-documented sim-to-real problem.
+- **Out-of-taxonomy klase**: znakovi koji nisu među 20 trained klasa (npr. `pass_straight`)
+  ponekad triggerju najbližu trained klasu (`pass_right`). Mitigirano per-class conf
+  override-om, ali za real fix treba dodati klasu i retrain.
+- **Sumrak** ima slabiji kontrast → mogući propušteni mali znakovi (mitigacija: viši `--imgsz`).
 - Ako FPS padne ispod targeta: TensorRT export (`yolo export model=… format=engine half=True`) tipično daje 2-3× boost.
 
 ## Reference
