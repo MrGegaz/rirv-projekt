@@ -1,7 +1,14 @@
-path: /home/mrgegaz/Workspace/VUB/6_Semestar/Projekti/RiRV/data/external/car_no_lights
-train: train/images
-val: val/images
-test: test/images
+# Combined dataset: car_no_lights (13 classes, 0-12) + etsd_synthetic (7 classes, 13-19).
+# Ultralytics supports list-format train/val that merges multiple roots.
+
+train:
+  - /home/mrgegaz/Workspace/VUB/6_Semestar/Projekti/RiRV/data/external/car_no_lights/train/images
+  - /home/mrgegaz/Workspace/VUB/6_Semestar/Projekti/RiRV/data/external/etsd_synthetic/train/images
+val:
+  - /home/mrgegaz/Workspace/VUB/6_Semestar/Projekti/RiRV/data/external/car_no_lights/val/images
+  - /home/mrgegaz/Workspace/VUB/6_Semestar/Projekti/RiRV/data/external/etsd_synthetic/val/images
+test:
+  - /home/mrgegaz/Workspace/VUB/6_Semestar/Projekti/RiRV/data/external/car_no_lights/test/images
 
 names:
   0: speed_limit_10
@@ -17,3 +24,10 @@ names:
   10: speed_limit_110
   11: speed_limit_120
   12: stop
+  13: give_way
+  14: priority_road
+  15: no_entry
+  16: no_left_turn
+  17: no_right_turn
+  18: pedestrian_crossing
+  19: pass_right

@@ -1,11 +1,15 @@
 # Analiza prometnih znakova (RiRV)
 
 Detekcija prometnih znakova iz video zapisa vožnje pomoću **YOLO11s**.
-Model je treniran isključivo na javnom Kaggle datasetu (`car_no_lights`, 13 klasa);
-profesorovi videi se koriste samo kao **demonstracijski / evaluacijski materijal**.
+Model je treniran na kombinaciji javnog Kaggle dataseta (`car_no_lights`, 13
+klasa) i sintetičnih primjera generiranih iz **European Traffic Sign Dataset**
+(7 dodatnih gradskih klasa). Profesorovi videi se koriste samo kao
+**demonstracijski / evaluacijski materijal**.
 
-## Klase
-`speed_limit_10/20/30/40/50/60/70/80/90/100/110/120`, `stop`
+## Klase (20 ukupno)
+- Speed limits (13): `speed_limit_10/20/30/40/50/60/70/80/90/100/110/120`, `stop`
+- ETSD dodatne (7): `give_way`, `priority_road`, `no_entry`, `no_left_turn`,
+  `no_right_turn`, `pedestrian_crossing`, `pass_right`
 
 ## Brzi start
 
@@ -45,5 +49,7 @@ models/trained/weights/best.pt   # istrenirani model
 scripts/train.py                 # trening
 scripts/live_demo.py             # demo
 scripts/prepare_dataset.py       # (jednokratno) preparacija Kaggle dataseta
+scripts/augment_etsd.py          # (jednokratno) synthetic detection iz ETSD crops
+data/external/etsd_synthetic/    # generated synthetic samples (gitignored)
 docs/                            # project_summary + arhivirani lab dokumenti
 ```

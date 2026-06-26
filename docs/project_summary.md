@@ -9,15 +9,20 @@ Detekcija i klasifikacija prometnih znakova iz video snimaka vožnje, demonstrir
 ## Pristup
 - **Model:** YOLO11s (Ultralytics)
 - **Hardware target:** NVIDIA RTX 3050 Laptop 6 GB (FP16 inference)
-- **Trening dataset:** [Kaggle car detection](https://www.kaggle.com/datasets/pkdarabi/cardetection/data), pripremljen u `data/external/car_no_lights/` (3530 train / 801 val / 638 test, semafori uklonjeni, remapan u 13 klasa)
+- **Trening dataset:** kombinacija dva izvora
+  - **Realna detekcija:** [Kaggle car detection](https://www.kaggle.com/datasets/pkdarabi/cardetection/data), pripremljen u `data/external/car_no_lights/` (3530 train / 801 val / 638 test, semafori uklonjeni, remapan u 13 klasa)
+  - **Synthetic augmentacija:** [European Traffic Sign Dataset](https://www.researchgate.net/publication/329307891_Classification_of_Traffic_Signs_The_European_Dataset) (Serna & Ruichek, 2018) — 7 dodatnih gradskih klasa generiranih preko paste-on-background sintetike (`scripts/augment_etsd.py`, 250 train + 40 val po klasi)
 - **Evaluacija:** profesorovi videi (`data/raw/day_video/`, `data/raw/dusk_video/`) — koriste se samo za live demo, **nikad nisu trening podaci**
-- **Taksonomija:** 13 klasa — `speed_limit_{10,20,30,40,50,60,70,80,90,100,110,120}`, `stop`
+- **Taksonomija:** 20 klasa
+  - 13 originalnih (speed_limits 10-120, stop)
+  - 7 ETSD: give_way, priority_road, no_entry, no_left_turn, no_right_turn, pedestrian_crossing, pass_right
 
 ## Pipeline
 
 | Korak | Skripta | Opis |
 |---|---|---|
-| (1×) Priprema dataseta | [scripts/prepare_dataset.py](../scripts/prepare_dataset.py) | Filtrira semafore i remapira klase iz sirovog Kaggle exporta |
+| (1×) Priprema Kaggle dataseta | [scripts/prepare_dataset.py](../scripts/prepare_dataset.py) | Filtrira semafore i remapira klase iz sirovog Kaggle exporta |
+| (1×) Synthetic detection iz ETSD | [scripts/augment_etsd.py](../scripts/augment_etsd.py) | Paste-on-background generator za 7 dodatnih gradskih klasa iz ETSD klasifikacijskih cropova |
 | Trening | [scripts/train.py](../scripts/train.py) | YOLO11s, 80 epoha, batch 16, imgsz 640, AMP, cos_lr |
 | Live demo | [scripts/live_demo.py](../scripts/live_demo.py) | OpenCV prozor, FP16 inference, ByteTrack temporal smoothing, distance overlay, rolling FPS overlay |
 
